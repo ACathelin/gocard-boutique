@@ -23,6 +23,7 @@ const PaymentLogsDB = require('../db/paymentLogs');
 const FeatureFlagsDB = require('../db/featureFlags');
 const UsersDB = require('../db/users');
 const agentBridge = require('../services/agentBridge');
+const { getRedis, isRedisConnected } = require('../lib/redisClient');
 
 const { verifyTurnstile } = require('../middleware/turnstile');
 const {
@@ -40,6 +41,9 @@ const { getSDK, getMerchantId } = require('../lib/worldlineSdk');
 const BOUTIQUE_BRAND_ID   = 'b0000000-0000-4000-8000-0000000000b0';
 const BOUTIQUE_COMPANY_ID = 'f0000000-0000-4000-8000-0000000000b0';
 const MAX_CHECKOUT_CENTS  = 30000 * 100; // €30,000 cap
+
+const IDEMPOTENCY_TTL_SECONDS = 24 * 60 * 60; // 24h
+const CHECKOUT_SESSION_TTL_SECONDS = 2 * 60 * 60; // 2h — covers full hosted-checkout lifetime
 
 function handleValidationErrors(req, res, next) {
   const errors = validationResult(req);
@@ -60,6 +64,42 @@ function optionalAuth(req, res, next) {
     if (err) return next();
     next();
   });
+}
+
+/**
+ * Extract a human-safe error summary from a Worldline SDK exception without
+ * leaking raw response bodies (which may contain merchant / partial card data)
+ * into logs or the payment_logs table.
+ */
+function sanitizeSdkError(err) {
+  if (!err) return { message: 'Unknown error' };
+  const errors = err?.response?.body?.errors;
+  if (Array.isArray(errors) && errors.length) {
+    const first = errors[0] || {};
+    return {
+      message: String(first.message || 'Worldline error').slice(0, 240),
+      code: first.errorCode || null,
+      category: first.category || null,
+    };
+  }
+  const name = err.name || 'Error';
+  const msg = typeof err.message === 'string' ? err.message.slice(0, 240) : 'Unknown';
+  return { message: `${name}: ${msg}`, code: null, category: null };
+}
+
+/**
+ * Trim the Worldline response to the fields the app actually uses — avoids
+ * persisting auth codes, 3DS payloads, and other sensitive merchant data into
+ * payment_logs.response_body verbatim.
+ */
+function trimHostedCheckoutResponse(body) {
+  if (!body || typeof body !== 'object') return null;
+  return {
+    hostedCheckoutId: body.hostedCheckoutId || null,
+    partialRedirectUrl: body.partialRedirectUrl || null,
+    returnMac: typeof body.RETURNMAC === 'string' ? '[present]' : null,
+    merchantReference: body?.merchantReference || null,
+  };
 }
 
 async function fetchBoutiqueProducts({ category, search } = {}) {
@@ -101,6 +141,32 @@ async function fetchBoutiqueProducts({ category, search } = {}) {
     price_cents: Number(r.price_cents) || 0,
     stock_quantity: Number(r.stock_quantity) || 0,
   }));
+}
+
+async function fetchBoutiqueProductById(id) {
+  const { rows } = await pool.query(
+    `SELECT p.id, p.name, p.description, p.brand_id, p.category_id,
+            p.sku, p.price_cents, p.currency, p.style, p.status,
+            p.availability, p.booking_note,
+            p.created_at, p.updated_at,
+            b.name AS brand_name, b.logo_url AS brand_logo,
+            c.name AS category_name,
+            pi.url AS primary_image,
+            COALESCE(i.quantity, 0) AS stock_quantity,
+            CASE WHEN COALESCE(i.quantity, 0) <= COALESCE(i.low_stock_threshold, 5)
+                 THEN true ELSE false END AS low_stock
+     FROM products p
+     LEFT JOIN brands b ON p.brand_id = b.id
+     LEFT JOIN categories c ON p.category_id = c.id
+     LEFT JOIN product_images pi ON p.id = pi.product_id AND pi.is_primary = true
+     LEFT JOIN inventory i ON p.id = i.product_id AND i.variant_id IS NULL
+     WHERE p.id = $1 AND p.brand_id = $2 AND p.status = 'active'
+     LIMIT 1`,
+    [id, BOUTIQUE_BRAND_ID]
+  );
+  const r = rows[0];
+  if (!r) return null;
+  return { ...r, price_cents: Number(r.price_cents) || 0, stock_quantity: Number(r.stock_quantity) || 0 };
 }
 
 /**
@@ -168,10 +234,12 @@ async function requireBoutiqueEnabled(req, res, next) {
   next();
 }
 
-async function optionalTurnstile(req, res, next) {
-  const required = await flag('boutique_turnstile_required', true);
-  if (!required) return next();
-  return verifyTurnstile()(req, res, next);
+function turnstileForAction(action) {
+  return async function optionalTurnstile(req, res, next) {
+    const required = await flag('boutique_turnstile_required', true);
+    if (!required) return next();
+    return verifyTurnstile({ action })(req, res, next);
+  };
 }
 
 function ensureSessionId(req, res) {
@@ -185,6 +253,72 @@ function ensureSessionId(req, res) {
     maxAge: 30 * 24 * 60 * 60 * 1000,
   });
   return fresh;
+}
+
+// ---------------------------------------------------------------------------
+// Redis helpers: idempotency + hosted-checkout ↔ session binding.
+// Silently no-op when Redis is unavailable — callers treat the absence of a
+// cached record as "not yet seen".
+// ---------------------------------------------------------------------------
+
+function idempotencyKeyIsValid(key) {
+  return typeof key === 'string' && /^[A-Za-z0-9_.\-]{8,128}$/.test(key);
+}
+
+function idempotencyCacheKey(sessionId, key) {
+  return `boutique:idem:${sessionId}:${key}`;
+}
+
+async function readIdempotentResponse(sessionId, key) {
+  if (!isRedisConnected()) return null;
+  try {
+    const redis = getRedis();
+    const raw = await redis.get(idempotencyCacheKey(sessionId, key));
+    return raw ? JSON.parse(raw) : null;
+  } catch (err) {
+    logger.warn({ err: err.message }, '[boutique] idempotency read failed');
+    return null;
+  }
+}
+
+async function writeIdempotentResponse(sessionId, key, payload) {
+  if (!isRedisConnected()) return;
+  try {
+    const redis = getRedis();
+    await redis.set(
+      idempotencyCacheKey(sessionId, key),
+      JSON.stringify(payload),
+      'EX',
+      IDEMPOTENCY_TTL_SECONDS
+    );
+  } catch (err) {
+    logger.warn({ err: err.message }, '[boutique] idempotency write failed');
+  }
+}
+
+function checkoutSessionKey(hostedCheckoutId) {
+  return `boutique:hc:${hostedCheckoutId}`;
+}
+
+async function bindCheckoutToSession(hostedCheckoutId, sessionId) {
+  if (!isRedisConnected() || !hostedCheckoutId || !sessionId) return;
+  try {
+    const redis = getRedis();
+    await redis.set(checkoutSessionKey(hostedCheckoutId), sessionId, 'EX', CHECKOUT_SESSION_TTL_SECONDS);
+  } catch (err) {
+    logger.warn({ err: err.message }, '[boutique] checkout session bind failed');
+  }
+}
+
+async function lookupCheckoutSession(hostedCheckoutId) {
+  if (!isRedisConnected() || !hostedCheckoutId) return null;
+  try {
+    const redis = getRedis();
+    return await redis.get(checkoutSessionKey(hostedCheckoutId));
+  } catch (err) {
+    logger.warn({ err: err.message }, '[boutique] checkout session lookup failed');
+    return null;
+  }
 }
 
 // ============================================================================
@@ -206,6 +340,7 @@ router.get('/capabilities', browseLimiter, requireBoutiqueEnabled, async (req, r
       flag('boutique_turnstile_required', true),
     ]);
 
+    res.set('Cache-Control', 'public, max-age=60');
     res.json({
       success: true,
       capabilities: {
@@ -253,8 +388,7 @@ router.get(
   handleValidationErrors,
   async (req, res) => {
     try {
-      const all = await fetchBoutiqueProducts();
-      const product = all.find((p) => p.id === req.params.id);
+      const product = await fetchBoutiqueProductById(req.params.id);
       if (!product) {
         return res.status(404).json({ success: false, error: 'Product not found.' });
       }
@@ -296,7 +430,7 @@ router.post(
   chatLimiter,
   optionalAuth,
   requireBoutiqueEnabled,
-  optionalTurnstile,
+  turnstileForAction('boutique'),
   [
     body('message').isString().trim().isLength({ min: 1, max: 2000 }).withMessage('Message must be 1–2000 characters'),
     body('sessionId').optional().isUUID().withMessage('Invalid session id'),
@@ -341,7 +475,7 @@ router.post(
   checkoutLimiter,
   optionalAuth,
   requireBoutiqueEnabled,
-  optionalTurnstile,
+  turnstileForAction('boutique'),
   [
     body('amount').optional().isInt({ min: 100, max: MAX_CHECKOUT_CENTS }).withMessage(`Amount must be between 100 and ${MAX_CHECKOUT_CENTS} cents`),
     body('currency').optional().isString().isLength({ min: 3, max: 3 }),
@@ -355,6 +489,22 @@ router.post(
   async (req, res) => {
     const startTime = Date.now();
     const sessionId = req.body.sessionId || ensureSessionId(req, res);
+
+    // Idempotency: if the client supplied a valid `Idempotency-Key` header and
+    // we have a cached response for (sessionId, key), return it verbatim.
+    const idempotencyKey = req.get('idempotency-key');
+    if (idempotencyKey && !idempotencyKeyIsValid(idempotencyKey)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Idempotency-Key must be 8–128 chars of [A-Za-z0-9_.-].',
+      });
+    }
+    if (idempotencyKey) {
+      const cached = await readIdempotentResponse(sessionId, idempotencyKey);
+      if (cached) {
+        return res.status(cached.statusCode || 200).json(cached.body);
+      }
+    }
 
     let resolvedEmail = req.body.email || null;
     if (!resolvedEmail && req.user?.id) {
@@ -447,7 +597,9 @@ router.post(
       const wantsTokenize = agentProtocol === 'vic';
 
       const descriptor = agentProtocol ? `boutique_${agentProtocol}`.slice(0, 25) : 'boutique';
-      const merchantReference = `boutique_${sessionId.slice(0, 8)}_${Date.now()}`;
+      // Globally unique — doesn't leak any part of sessionId and can never
+      // collide with another checkout even within the same millisecond.
+      const merchantReference = `boutique_${crypto.randomUUID()}`;
 
       const hostedCheckoutRequest = {
         order: {
@@ -477,18 +629,20 @@ router.post(
 
       if (response?.isSuccess && response.body?.hostedCheckoutId) {
         logData.responseStatus = 200;
-        logData.responseBody = JSON.stringify(response.body);
+        logData.responseBody = JSON.stringify(trimHostedCheckoutResponse(response.body));
         logData.hostedCheckoutId = response.body.hostedCheckoutId;
         logData.merchantCustomerId = merchantCustomerId;
         logData.processingTimeMs = Date.now() - startTime;
         await PaymentLogsDB.createLog(logData);
+
+        await bindCheckoutToSession(response.body.hostedCheckoutId, sessionId);
 
         logger.info(
           { hostedCheckoutId: response.body.hostedCheckoutId, sessionId, network, agentProtocol },
           'boutique checkout created'
         );
 
-        return res.json({
+        const responseBody = {
           success: true,
           hostedCheckoutId: response.body.hostedCheckoutId,
           hostedCheckoutUrl: response.body.redirectUrl,
@@ -500,24 +654,31 @@ router.post(
           ...(pricedBreakdown && { pricedBreakdown }),
           ...(agentProtocol && { agentProtocol }),
           ...(network && { network }),
-        });
+        };
+
+        if (idempotencyKey) {
+          await writeIdempotentResponse(sessionId, idempotencyKey, { statusCode: 200, body: responseBody });
+        }
+
+        return res.json(responseBody);
       }
 
       logData.responseStatus = 400;
       logData.errorMessage = 'Invalid response from Worldline';
-      logData.responseBody = JSON.stringify(response || {});
+      logData.responseBody = null;
       logData.processingTimeMs = Date.now() - startTime;
       await PaymentLogsDB.createLog(logData);
       res.status(400).json({ success: false, error: 'Unable to start checkout.' });
     } catch (error) {
-      logger.error({ error: error.message }, 'boutique checkout error');
+      const safe = sanitizeSdkError(error);
+      logger.error({ error: safe }, 'boutique checkout error');
       logData.responseStatus = 500;
-      logData.errorMessage = error.message;
+      logData.errorMessage = safe.message;
       logData.processingTimeMs = Date.now() - startTime;
       try {
         await PaymentLogsDB.createLog(logData);
       } catch (logErr) {
-        console.error('[boutique] failed to log checkout failure:', logErr.message);
+        console.error('[boutique] failed to log checkout failure:', sanitizeSdkError(logErr).message);
       }
       res.status(500).json({ success: false, error: 'Checkout failed.' });
     }
@@ -536,6 +697,20 @@ router.get(
   async (req, res) => {
     try {
       const { hostedCheckoutId } = req.params;
+      const callerSessionId = req.cookies?.boutique_sid || null;
+
+      // Session binding: a hosted checkout may only be polled by the session
+      // that created it. If Redis has no record we fall back to allowing the
+      // poll (outage / old checkout) rather than breaking genuine returns.
+      const ownerSessionId = await lookupCheckoutSession(hostedCheckoutId);
+      if (ownerSessionId && callerSessionId && ownerSessionId !== callerSessionId) {
+        logger.info(
+          { hostedCheckoutId, ip: req.ip },
+          'boutique payment-status: session mismatch rejected'
+        );
+        return res.status(403).json({ success: false, error: 'Not authorised to view this payment.' });
+      }
+
       const sdk = getSDK();
       const merchantId = getMerchantId();
 
@@ -563,12 +738,12 @@ router.get(
           });
         }
       } catch (syncErr) {
-        logger.warn({ error: syncErr.message, hostedCheckoutId }, 'boutique payment status sync failed');
+        logger.warn({ error: sanitizeSdkError(syncErr).message, hostedCheckoutId }, 'boutique payment status sync failed');
       }
 
       res.json({ success: true, status: body.status || 'UNKNOWN', payload: body });
     } catch (error) {
-      logger.error({ error: error.message }, 'boutique payment-status error');
+      logger.error({ error: sanitizeSdkError(error).message }, 'boutique payment-status error');
       res.status(500).json({ success: false, error: 'Failed to fetch payment status.' });
     }
   }

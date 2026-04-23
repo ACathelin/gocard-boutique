@@ -189,7 +189,10 @@ async function runTurn({ sessionId, message, ipAddress }) {
     const response = await anthropic.messages.create({
       model: MODEL,
       max_tokens: MAX_OUTPUT_TOKENS,
-      system: systemPrompt,
+      // Mark the system prompt as cacheable — the catalog block rarely changes
+      // within a 5-minute window, so Anthropic's prompt caching cuts token
+      // cost and latency for back-to-back turns.
+      system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: message.slice(0, 2000) }],
     });
 

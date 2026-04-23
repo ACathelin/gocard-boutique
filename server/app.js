@@ -8,6 +8,15 @@ const helmet = require('helmet');
 const { logger, attachLogger } = require('./config/logger');
 const FeatureFlagsDB = require('./db/featureFlags');
 
+function resolveCorsOrigin() {
+  const frontend = process.env.FRONTEND_URL;
+  if (frontend) return frontend;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('FRONTEND_URL must be set in production — refusing to start with a permissive CORS origin.');
+  }
+  return ['http://localhost:3000', 'http://localhost:5173'];
+}
+
 function createApp() {
   const app = express();
 
@@ -29,24 +38,33 @@ function createApp() {
       },
     },
     crossOriginEmbedderPolicy: false,
+    hsts: process.env.NODE_ENV === 'production'
+      ? { maxAge: 63072000, includeSubDomains: true, preload: true }
+      : false,
   }));
 
   app.use(compression());
   app.use(cors({
-    origin: process.env.FRONTEND_URL || true,
+    origin: resolveCorsOrigin(),
     credentials: true,
   }));
   app.use(cookieParser());
+
+  // Webhooks need the raw body for HMAC verification — mount BEFORE express.json.
+  app.use('/api/worldline/webhook', require('./routes/worldlineWebhook'));
+
   app.use(express.json({ limit: '100kb' }));
   app.use(attachLogger);
 
   app.get('/health', (_req, res) => res.json({ ok: true }));
 
+  // Public-readable flags. Deliberately excludes anything that describes
+  // security posture (e.g. `boutique_turnstile_required`) — probing the public
+  // endpoint shouldn't reveal whether bot protection is currently enforced.
   const ALLOWED_PUBLIC_FLAGS = new Set([
     'boutique_public_enabled',
     'boutique_chat_enabled',
     'boutique_payments_enabled',
-    'boutique_turnstile_required',
     'boutique_vic_enabled',
     'boutique_mc_agentpay_enabled',
     'boutique_visa_trusted_agent_enabled',

@@ -1,6 +1,10 @@
 /**
  * Rate limiters for the public /api/boutique/* surface.
  * Redis-backed via createRedisRateLimitStore (falls back to in-memory store).
+ *
+ * Browse endpoints fail OPEN on Redis outage — a short outage is better than a
+ * site-wide 5xx. Write endpoints (/chat, /checkout) fail CLOSED — cost runaway
+ * during a Redis blip is worse than a temporary 429.
  */
 
 const rateLimit = require('express-rate-limit');
@@ -19,7 +23,7 @@ const browseLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator,
-  store: createRedisRateLimitStore('boutique-browse'),
+  store: createRedisRateLimitStore('boutique-browse', { onRedisDown: 'open' }),
   handler: tooMany('Too many requests. Please slow down.'),
 });
 
@@ -29,7 +33,7 @@ const detailLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator,
-  store: createRedisRateLimitStore('boutique-browse-detail'),
+  store: createRedisRateLimitStore('boutique-browse-detail', { onRedisDown: 'open' }),
   handler: tooMany('Too many requests. Please slow down.'),
 });
 
@@ -39,7 +43,7 @@ const chatLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator,
-  store: createRedisRateLimitStore('boutique-chat'),
+  store: createRedisRateLimitStore('boutique-chat', { onRedisDown: 'closed' }),
   handler: tooMany('Chat is rate-limited. Please wait a moment.'),
 });
 
@@ -49,7 +53,7 @@ const checkoutLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator,
-  store: createRedisRateLimitStore('boutique-checkout'),
+  store: createRedisRateLimitStore('boutique-checkout', { onRedisDown: 'closed' }),
   handler: tooMany('Too many checkout attempts. Please wait a minute.'),
 });
 
@@ -59,7 +63,7 @@ const statusLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator,
-  store: createRedisRateLimitStore('boutique-status'),
+  store: createRedisRateLimitStore('boutique-status', { onRedisDown: 'open' }),
   handler: tooMany('Too many status checks. Please slow down.'),
 });
 

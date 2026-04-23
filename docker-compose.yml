@@ -2,11 +2,13 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: boutique
-      POSTGRES_USER: boutique
-      POSTGRES_PASSWORD: boutique
+      POSTGRES_DB: ${POSTGRES_DB:-boutique}
+      POSTGRES_USER: ${POSTGRES_USER:-boutique}
+      # DEMO DEFAULT — override POSTGRES_PASSWORD in your host env for any
+      # real deployment. docker-compose will pick it up automatically.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-boutique}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U boutique -d boutique"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-boutique} -d ${POSTGRES_DB:-boutique}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -31,7 +33,7 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgres://boutique:boutique@postgres:5432/boutique
+      DATABASE_URL: postgres://${POSTGRES_USER:-boutique}:${POSTGRES_PASSWORD:-boutique}@postgres:5432/${POSTGRES_DB:-boutique}
       REDIS_URL: redis://redis:6379
     ports:
       - "3000:3000"

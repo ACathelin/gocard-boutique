@@ -7,7 +7,32 @@ const connectionString =
   `postgresql://${process.env.PGUSER || 'postgres'}:${process.env.PGPASSWORD || 'postgres'}@${process.env.PGHOST || 'localhost'}:${process.env.PGPORT || 5432}/${process.env.PGDATABASE || 'boutique'}`;
 
 const isProduction = process.env.NODE_ENV === 'production';
-const sslConfig = isProduction ? { rejectUnauthorized: false } : false;
+
+function resolveSslConfig() {
+  if (!isProduction) return false;
+
+  // In production, verify certificates by default. An operator who genuinely
+  // needs a self-signed chain (ngrok, some managed Postgres dev tiers) can
+  // opt into permissive mode via PGSSL_INSECURE=1 — but must do so deliberately.
+  if (process.env.PGSSL_INSECURE === '1') {
+    logger.warn('PGSSL_INSECURE=1 — DB connection will accept any certificate (MITM possible)');
+    return { rejectUnauthorized: false };
+  }
+
+  const caPath = process.env.PGSSLROOTCERT;
+  if (caPath) {
+    const fs = require('fs');
+    try {
+      return { rejectUnauthorized: true, ca: fs.readFileSync(caPath, 'utf8') };
+    } catch (err) {
+      throw new Error(`Failed to read PGSSLROOTCERT at ${caPath}: ${err.message}`);
+    }
+  }
+
+  return { rejectUnauthorized: true };
+}
+
+const sslConfig = resolveSslConfig();
 
 const pool = new Pool({
   connectionString,
@@ -26,7 +51,10 @@ pool.on('error', (err) => {
   console.error('Unexpected error on idle client:', err.message);
 });
 
-logger.info({ mode: sslConfig === false ? 'disabled' : 'permissive', NODE_ENV: process.env.NODE_ENV }, 'Database pool ready');
+logger.info(
+  { mode: sslConfig === false ? 'disabled' : sslConfig.rejectUnauthorized ? 'verify' : 'insecure', NODE_ENV: process.env.NODE_ENV },
+  'Database pool ready'
+);
 
 async function query(text, params) {
   const start = Date.now();

@@ -28,6 +28,20 @@ const SITE_URL: string =
 
 const DEFAULT_IMAGE = `${SITE_URL}/boutique/van-gogh-hero.jpg`;
 
+/**
+ * JSON.stringify escapes `"`, `\`, and control characters, but does NOT escape
+ * `<`, `>`, or `/`. That's fine inside an HTML attribute, but a product
+ * description containing `</script>` would break out of the enclosing
+ * <script type="application/ld+json"> tag. This helper neutralises the three
+ * dangerous sequences (`</`, `<!`, `]]>`) in the serialised JSON.
+ */
+function safeJsonLd(block: Record<string, unknown>): string {
+  return JSON.stringify(block)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026');
+}
+
 export default function SeoHead({
   title = DEFAULT_TITLE,
   description = DEFAULT_DESCRIPTION,
@@ -60,7 +74,7 @@ export default function SeoHead({
           key={`jsonld-${idx}`}
           type="application/ld+json"
           // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(block) }}
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(block) }}
         />
       ))}
     </>
