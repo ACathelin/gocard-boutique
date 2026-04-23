@@ -1,0 +1,485 @@
+/* =============================================================================
+   GoCard Boutique Theme — scoped to .theme-boutique
+   =============================================================================
+   Minimalist luxury aesthetic for a private lifestyle-membership brand:
+   - Near-black / off-white palette, warm champagne accent
+   - Serif headings (Cormorant Garamond), sans body (Inter)
+   - Generous whitespace, slow elegant reveals
+   - Scoped to a wrapper class so the app's dark/neon theme stays intact
+   ============================================================================= */
+
+.theme-boutique {
+  /* Palette (HSL — hue saturation lightness) */
+  --boutique-bg:            220  6%  6%;   /* #0E0F11 near-black */
+  --boutique-bg-raised:     220  6%  9%;   /* raised surfaces stay dark */
+  --boutique-bg-subtle:     220  5% 14%;   /* image placeholders, card tint */
+  --boutique-bg-inverse:     40 25% 96%;   /* rare light block */
+
+  --boutique-text:           40 20% 94%;   /* #F4F0E8 off-white */
+  --boutique-text-muted:     40 10% 72%;   /* dimmer off-white */
+  --boutique-text-faint:     40  6% 55%;
+
+  --boutique-text-inverse:  220  6%  8%;   /* dark text on light blocks */
+
+  --boutique-accent:         42 38% 72%;   /* #DCC48F warm champagne */
+  --boutique-accent-ink:    220  6%  8%;
+
+  --boutique-border:         40  8% 24%;
+  --boutique-border-strong:  40 20% 86%;
+  --boutique-divider:        40  8% 18%;
+
+  /* Typography */
+  --boutique-font-serif:    'Cormorant Garamond', 'EB Garamond', 'Didot', 'Times New Roman', serif;
+  --boutique-font-sans:     'Inter', system-ui, -apple-system, sans-serif;
+  --boutique-font-mono:     'SF Mono', 'Menlo', 'Consolas', monospace;
+
+  /* Motion */
+  --boutique-ease:          cubic-bezier(0.22, 1, 0.36, 1);
+  --boutique-slow:          900ms;
+  --boutique-medium:        600ms;
+  --boutique-fast:          300ms;
+
+  /* Spacing */
+  --boutique-gutter:        clamp(1.25rem, 4vw, 4rem);
+  --boutique-section-y:     clamp(4rem, 10vw, 10rem);
+  --boutique-radius:        0px;
+  --boutique-radius-soft:   2px;
+
+  background-color: hsl(var(--boutique-bg));
+  color: hsl(var(--boutique-text));
+  font-family: var(--boutique-font-sans);
+  font-weight: 400;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Headings */
+.theme-boutique h1,
+.theme-boutique h2,
+.theme-boutique h3,
+.theme-boutique h4,
+.theme-boutique .serif {
+  font-family: var(--boutique-font-serif);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: hsl(var(--boutique-text));
+  line-height: 1.1;
+}
+
+.theme-boutique h1 { font-size: clamp(2.75rem, 7vw, 6rem); }
+.theme-boutique h2 { font-size: clamp(2rem,  5vw, 4rem);   }
+.theme-boutique h3 { font-size: clamp(1.5rem, 3vw, 2.25rem); }
+
+/* Editorial eyebrow */
+.theme-boutique .eyebrow {
+  font-family: var(--boutique-font-sans);
+  text-transform: uppercase;
+  letter-spacing: 0.24em;
+  font-size: 0.72rem;
+  color: hsl(var(--boutique-text-faint));
+  display: inline-block;
+}
+
+/* Subtle links */
+.theme-boutique a.boutique-link {
+  color: hsl(var(--boutique-text));
+  text-decoration: none;
+  position: relative;
+  padding-bottom: 2px;
+  border-bottom: 1px solid hsl(var(--boutique-text));
+  transition: color var(--boutique-fast) var(--boutique-ease),
+              border-color var(--boutique-fast) var(--boutique-ease);
+}
+.theme-boutique a.boutique-link:hover {
+  color: hsl(var(--boutique-accent));
+  border-color: hsl(var(--boutique-accent));
+}
+
+/* Buttons — serif, minimal */
+.theme-boutique .boutique-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.9rem 2rem;
+  font-family: var(--boutique-font-sans);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  border: 1px solid hsl(var(--boutique-border-strong));
+  background: transparent;
+  color: hsl(var(--boutique-text));
+  cursor: pointer;
+  transition: all var(--boutique-fast) var(--boutique-ease);
+  border-radius: var(--boutique-radius);
+}
+.theme-boutique .boutique-btn:hover {
+  background: hsl(var(--boutique-text));
+  color: hsl(var(--boutique-text-inverse));
+}
+.theme-boutique .boutique-btn.primary {
+  background: hsl(var(--boutique-text));
+  color: hsl(var(--boutique-text-inverse));
+}
+.theme-boutique .boutique-btn.primary:hover {
+  background: hsl(var(--boutique-accent));
+  border-color: hsl(var(--boutique-accent));
+}
+.theme-boutique .boutique-btn.ghost {
+  border-color: transparent;
+  padding-inline: 0;
+}
+.theme-boutique .boutique-btn.ghost:hover {
+  background: transparent;
+  color: hsl(var(--boutique-accent));
+}
+
+/* Product card */
+.theme-boutique .boutique-card {
+  background: transparent;
+  color: hsl(var(--boutique-text));
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  text-decoration: none;
+}
+.theme-boutique .boutique-card__image {
+  aspect-ratio: 3 / 4;
+  width: 100%;
+  overflow: hidden;
+  background: hsl(var(--boutique-bg-subtle));
+}
+.theme-boutique .boutique-card__image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 1200ms var(--boutique-ease),
+              opacity var(--boutique-medium) var(--boutique-ease);
+}
+.theme-boutique .boutique-card:hover .boutique-card__image img {
+  transform: scale(1.03);
+  opacity: 0.92;
+}
+.theme-boutique .boutique-card__name {
+  font-family: var(--boutique-font-serif);
+  font-size: 1.15rem;
+  line-height: 1.2;
+}
+.theme-boutique .boutique-card__price {
+  font-family: var(--boutique-font-sans);
+  color: hsl(var(--boutique-text-muted));
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+}
+
+/* Reveal animation — respects reduced motion */
+.theme-boutique .reveal-up {
+  opacity: 0;
+  transform: translateY(24px);
+  animation: boutique-reveal var(--boutique-slow) var(--boutique-ease) forwards;
+}
+.theme-boutique .reveal-up.delay-1 { animation-delay: 120ms; }
+.theme-boutique .reveal-up.delay-2 { animation-delay: 240ms; }
+.theme-boutique .reveal-up.delay-3 { animation-delay: 360ms; }
+
+@keyframes boutique-reveal {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-boutique .reveal-up {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+  .theme-boutique .boutique-card__image img {
+    transition: none;
+  }
+}
+
+/* Chat panel — editorial, no bubbles */
+.theme-boutique .boutique-chat {
+  background: hsl(var(--boutique-bg-raised));
+  color: hsl(var(--boutique-text));
+  font-family: var(--boutique-font-sans);
+}
+.theme-boutique .boutique-chat__header {
+  font-family: var(--boutique-font-serif);
+  font-size: 1.25rem;
+  letter-spacing: -0.01em;
+  padding: 1.5rem;
+  border-bottom: 1px solid hsl(var(--boutique-divider));
+}
+.theme-boutique .boutique-chat__msg {
+  padding: 1rem 0;
+  border-top: 1px solid hsl(var(--boutique-divider));
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+.theme-boutique .boutique-chat__msg:first-of-type {
+  border-top: none;
+}
+.theme-boutique .boutique-chat__msg.user {
+  color: hsl(var(--boutique-text));
+}
+.theme-boutique .boutique-chat__msg.assistant {
+  color: hsl(var(--boutique-text));
+}
+.theme-boutique .boutique-chat__role {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: hsl(var(--boutique-text-faint));
+  margin-bottom: 0.35rem;
+}
+.theme-boutique .boutique-chat__tool {
+  font-family: var(--boutique-font-mono);
+  font-size: 0.75rem;
+  color: hsl(var(--boutique-text-faint));
+  text-transform: lowercase;
+  letter-spacing: 0.05em;
+  margin: 0.15rem 0;
+}
+
+/* Badge — used for capability chips (VIC, MC Agent Pay) */
+.theme-boutique .boutique-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.7rem;
+  font-family: var(--boutique-font-sans);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: hsl(var(--boutique-text-muted));
+  border: 1px solid hsl(var(--boutique-border));
+  background: hsl(var(--boutique-bg-raised));
+}
+
+/* Form inputs */
+.theme-boutique .boutique-input {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  background: hsl(var(--boutique-bg-raised));
+  color: hsl(var(--boutique-text));
+  border: 1px solid hsl(var(--boutique-border));
+  font-family: var(--boutique-font-sans);
+  font-size: 0.95rem;
+  border-radius: var(--boutique-radius-soft);
+  transition: border-color var(--boutique-fast) var(--boutique-ease);
+}
+.theme-boutique .boutique-input:focus {
+  outline: none;
+  border-color: hsl(var(--boutique-border-strong));
+}
+
+/* Layout helpers */
+.theme-boutique .boutique-gutter {
+  padding-inline: var(--boutique-gutter);
+}
+.theme-boutique .boutique-section {
+  padding-block: var(--boutique-section-y);
+}
+
+/* Divider */
+.theme-boutique .boutique-hr {
+  border: 0;
+  border-top: 1px solid hsl(var(--boutique-border));
+  margin-block: 2.5rem;
+}
+
+/* ---------------------------------------------------------------------------
+   Header icon buttons — cart / menu in the top bar
+   --------------------------------------------------------------------------- */
+.theme-boutique .boutique-icon-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: transparent;
+  border: none;
+  color: hsl(var(--boutique-text));
+  cursor: pointer;
+  border-radius: 9999px;
+  transition: background-color var(--boutique-fast) var(--boutique-ease),
+              color var(--boutique-fast) var(--boutique-ease);
+}
+.theme-boutique .boutique-icon-btn:hover {
+  background: hsl(var(--boutique-bg-subtle));
+  color: hsl(var(--boutique-accent));
+}
+.theme-boutique .boutique-icon-btn__count {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  font-family: var(--boutique-font-sans);
+  font-size: 0.62rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: hsl(var(--boutique-accent));
+  color: hsl(var(--boutique-accent-ink));
+}
+
+/* ---------------------------------------------------------------------------
+   Bottom floating nav — pill + separate ASK button
+   Anchored bottom-center on mobile, stays on all breakpoints.
+   --------------------------------------------------------------------------- */
+.theme-boutique .boutique-bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding-inline: 1rem;
+  pointer-events: none;
+}
+.theme-boutique .boutique-bottom-nav > * {
+  pointer-events: auto;
+}
+
+.theme-boutique .boutique-bottom-nav__pill {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0.25rem;
+  padding: 0.4rem;
+  background: hsl(var(--boutique-bg-raised) / 0.92);
+  border: 1px solid hsl(var(--boutique-border));
+  border-radius: 9999px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 18px 50px -24px rgba(0, 0, 0, 0.65),
+              0 2px 6px -2px rgba(0, 0, 0, 0.35);
+}
+
+.theme-boutique .boutique-bottom-nav__tab {
+  appearance: none;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  color: hsl(var(--boutique-text-muted));
+  font-family: var(--boutique-font-sans);
+  font-size: 0.66rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  line-height: 1;
+  transition: color var(--boutique-fast) var(--boutique-ease),
+              background-color var(--boutique-fast) var(--boutique-ease);
+}
+.theme-boutique .boutique-bottom-nav__tab:hover {
+  color: hsl(var(--boutique-text));
+}
+.theme-boutique .boutique-bottom-nav__tab.is-active {
+  color: hsl(var(--boutique-text));
+  background: hsl(var(--boutique-bg-subtle));
+}
+.theme-boutique .boutique-bottom-nav__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.theme-boutique .boutique-bottom-nav__label {
+  display: inline-block;
+}
+
+.theme-boutique .boutique-bottom-nav__ask {
+  appearance: none;
+  cursor: pointer;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  width: 64px;
+  height: 64px;
+  border-radius: 9999px;
+  background: hsl(var(--boutique-accent));
+  color: hsl(var(--boutique-accent-ink));
+  border: 1px solid hsl(var(--boutique-accent));
+  font-family: var(--boutique-font-sans);
+  font-size: 0.66rem;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  box-shadow: 0 18px 50px -22px rgba(0, 0, 0, 0.7),
+              0 3px 8px -2px rgba(0, 0, 0, 0.35);
+  transition: transform var(--boutique-fast) var(--boutique-ease),
+              box-shadow var(--boutique-fast) var(--boutique-ease);
+}
+.theme-boutique .boutique-bottom-nav__ask:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 22px 60px -22px rgba(0, 0, 0, 0.75),
+              0 5px 12px -2px rgba(0, 0, 0, 0.4);
+}
+
+/* Leave room at the bottom of every boutique page so the floating nav
+   never sits over content. */
+.theme-boutique .boutique-bottom-pad {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 6rem);
+}
+
+/* Tighter paddings on narrow screens so the pill + ASK still fit side by side. */
+@media (max-width: 420px) {
+  .theme-boutique .boutique-bottom-nav__tab {
+    padding: 0.5rem 0.7rem;
+    font-size: 0.6rem;
+    letter-spacing: 0.16em;
+  }
+  .theme-boutique .boutique-bottom-nav__ask {
+    width: 56px;
+    height: 56px;
+    font-size: 0.6rem;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Product card metadata line — the small caps row beneath the price,
+   e.g. "7 DECEMBER 2026 · MILANO · OPENING NIGHT"
+   --------------------------------------------------------------------------- */
+.theme-boutique .boutique-card__meta {
+  margin-top: 0.4rem;
+  font-family: var(--boutique-font-sans);
+  font-size: 0.7rem;
+  letter-spacing: 0.2em;
+  line-height: 1.5;
+  color: hsl(var(--boutique-text-faint));
+  text-transform: uppercase;
+}
+
+/* ---------------------------------------------------------------------------
+   Section header — title left, count right, thin divider below
+   --------------------------------------------------------------------------- */
+.theme-boutique .boutique-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  padding-bottom: 0.75rem;
+  margin-bottom: clamp(1.5rem, 2.5vw, 2.25rem);
+  border-bottom: 1px solid hsl(var(--boutique-border));
+}
+.theme-boutique .boutique-section-head__title {
+  font-family: var(--boutique-font-serif);
+  font-size: clamp(1.75rem, 3.5vw, 2.5rem);
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
